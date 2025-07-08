@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>IoT Smart Home Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/mqtt/dist/mqtt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h1>Dashboard Suhu & Kelembapan</h1>
+    <canvas id="tempHumidityChart" width="600" height="300"></canvas>
+    <h2>Notifikasi Alert</h2>
+    <div id="alertBox" style="color: red; font-weight: bold;"></div>
+
+    <script>
+        // Konfigurasi MQTT broker WebSocket URL
+        const brokerUrl = 'wss://test.mosquitto.org:8081/mqtt';
+        const client = mqtt.connect(brokerUrl);
+
+        // Data storage untuk grafik
+        const labels = [];
+        const temperatureData = [];
+        const humidityData = [];
+
+        // Setup Chart.js
+        const ctx = document.getElementById('tempHumidityChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Suhu (°C)',
+                        borderColor: 'rgb(255, 99, 132)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        data: temperatureData,
+                        fill: false,
+                    },
+                    {
+                        label: 'Kelembapan (%)',
+                        borderColor: 'rgb(54, 162, 235)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        data: humidityData,
+                        fill: false,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            parser: 'HH:mm:ss',
+                            tooltipFormat: 'HH:mm:ss',
+                            unit: 'second',
+                            displayFormats: {
+                                second: 'HH:mm:ss'
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Waktu'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        title: {
+                            display: true,
+                            text: 'Nilai'
+                        }
+                    }
+                }
+            }
+        });
+
+        client.on('connect', function () {
+            console.log('Connected to MQTT broker');
+            client.subscribe('home/sensor/temperature_humidity');
+            client.subscribe('home/alert');
+        });
+
+        client.on('message', function (topic, message) {
+            if (topic === 'home/sensor/temperature_humidity') {
+                try {
+                    const data = JSON.parse(message.toString());
+                    const now = new Date();
+                    const timeLabel = now.toLocaleTimeString();
+
+                    // Batasi jumlah titik data di grafik (misal max 20)
+                    if (labels.length >= 20) {
+                        labels.shift();
+                        temperatureData.shift();
+                        humidityData.shift();
+                    }
+
+                    labels.push(timeLabel);
+                    temperatureData.push(data.temperature);
+                    humidityData.push(data.humidity);
+
+                    chart.update();
+                } catch (e) {
+                    console.error('Error parsing sensor data:', e);
+                }
+            } else if (topic === 'home/alert') {
+                const alertBox = document.getElementById('alertBox');
+                alertBox.textContent = message.toString();
+                // Bersihkan notifikasi setelah 10 detik
+                setTimeout(() => {
+                    alertBox.textContent = '';
+                }, 10000);
+            }
+        });
+    </script>
+</body>
+</html>
